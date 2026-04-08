@@ -1,0 +1,18 @@
+[project]
+name = "compliance_auditor_env"
+version = "1.0.0"
+description = "An RL environment where AI agents act as legal auditors, scanning corporate privacy policies for GDPR and CCPA regulatory violations."
+readme = "readme.md"
+requires-python = ">=3.11"
+authors = [{ name = "Yuvaan Soni" }]
+dependencies = [
+    "openenv-core>=0.1.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "openai>=1.0.0",
+    "requests>=2.28.0"
+]
+
+[project.scripts]
+server = "server.app:main"

@@ -1,0 +1,19 @@
+name: compliance_auditor_env
+version: "1.0.0"
+description: "A regulatory compliance simulation. The agent acts as a legal auditor, scanning corporate privacy policies and terms of ToS to find violations of GDPR and CCPA regulations."
+
+entry_point: server.app:app
+port: 7860
+
+tasks:
+  - name: easy_gdpr_obvious
+    description: "Audit a basic privacy policy and flag obvious missing GDPR requirements (retention period, erasure, controller info)."
+  - name: medium_gdpr_subtle
+    description: "Audit a sophisticated privacy policy and flag subtle GDPR violations including invalid pre-ticked consent and vague retention clauses."
+  - name: hard_gdpr_ccpa_multi
+    description: "Simultaneously audit a complex terms of service against both GDPR and CCPA, navigating conflicting definitions of data 'sharing' and 'selling'."
+
+graders:
+  easy_gdpr_obvious: server.environment.grade_easy_gdpr_obvious
+  medium_gdpr_subtle: server.environment.grade_medium_gdpr_subtle
+  hard_gdpr_ccpa_multi: server.environment.grade_hard_gdpr_ccpa_multi
