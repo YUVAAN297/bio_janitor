@@ -1,0 +1,10 @@
+﻿venv/
+.uv-cache/
+.pytest_cache/
+__pycache__/
+server/__pycache__/
+outputs/
+.git/
+*.pyc
+*.pyo
+*.pyd
