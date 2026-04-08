@@ -22,7 +22,7 @@ app = create_app(
     ComplianceAction,
     ComplianceObservation,
     env_name="compliance_auditor_env",
-    max_concurrent_envs=int(os.getenv("MAX_CONCURRENT_ENVS", "1")),
+    max_concurrent_envs=1,
 )
 
 

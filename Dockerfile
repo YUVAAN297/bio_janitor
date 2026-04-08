@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
-ENV MAX_CONCURRENT_ENVS=100
+ENV MAX_CONCURRENT_ENVS=1
 ENV PORT=7860
 ENV HOST=0.0.0.0
 
