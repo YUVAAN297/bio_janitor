@@ -1,0 +1,11 @@
+{
+    "task_id": "easy_gdpr_obvious",
+    "difficulty": "easy",
+    "default_violations": 3,
+    "default_max_steps": 15,
+    "enabled_templates": [
+        "retention_period", "right_to_erasure", "controller_contact", "lawful_basis", 
+        "unencrypted_http_transmission", "data_minimization", "purpose_limitation", 
+        "right_to_rectification", "right_to_withdraw_consent", "lodge_complaint_authority"
+    ]
+}

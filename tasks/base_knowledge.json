@@ -1,0 +1,38 @@
+{
+    "regulations": {
+        "GDPR Article 4": "Consent must be a freely given, specific, unambiguous indication... pre-ticked boxes are invalid.",
+        "GDPR Article 5": "Principles relating to processing of personal data: purpose limitation, data minimization.",
+        "GDPR Article 6": "Processing is only lawful if the data subject has given explicit consent. Opt-out is invalid.",
+        "GDPR Article 7": "Conditions for consent, including the right to withdraw consent.",
+        "GDPR Article 8": "Conditions applicable to child's consent in relation to information society services.",
+        "GDPR Article 9": "Processing of special categories of personal data (including biometrics and inferred sensitive data) is prohibited without explicit consent or strict exemptions.",
+        "GDPR Article 12": "Transparent information, communication and modalities for the exercise of the rights of the data subject. Must be free of charge and without undue burden (no dark patterns).",
+        "GDPR Article 13": "Information provided where data are collected. Must include controller identity, recipients of data, and retention.",
+        "GDPR Article 16": "Right to rectification of inaccurate personal data.",
+        "GDPR Article 17": "Right to erasure ('right to be forgotten').",
+        "GDPR Article 20": "Right to data portability. Data subject shall have the right to receive personal data.",
+        "GDPR Article 22": "Right not to be subject to a decision based solely on automated processing, including profiling.",
+        "GDPR Article 27": "Representatives of controllers or processors not established in the Union.",
+        "GDPR Article 28": "Processor obligations and guarantees regarding sub-processors.",
+        "GDPR Article 32": "Security of processing. Data should be encrypted.",
+        "GDPR Article 33": "Notification of a personal data breach to the supervisory authority within 72 hours.",
+        "GDPR Article 37": "Designation of the data protection officer processing on a large scale.",
+        "GDPR Article 46": "Transfers subject to appropriate safeguards.",
+        "GDPR Article 88": "Processing in the context of employment requires specific rules to safeguard human dignity, legitimate interests and fundamental rights.",
+        "CCPA 1798.120": "Right to direct a business not to sell personal information. 'Sale' includes sharing for value. Applies strict rules for minors.",
+        "CCPA 1798.125": "A business shall not discriminate against a consumer for exercising privacy rights. Financial incentives require explicit notice.",
+        "CCPA 1798.130": "Businesses must allow requests from authorized agents on behalf of the consumer, provide access beyond 12 months, and not place undue burden on deletion requests.",
+        "CPRA": "Consumers have the right to opt-out of the sharing of personal information for cross-context behavioral advertising."
+    },
+    "neutral_boilerplate": [
+        "Information Security: We employ industry-standard encryption to protect your data.",
+        "Updates: This policy may be updated periodically. We will notify you of any material changes.",
+        "Cookies: We use cookies to ensure the basic functionality of our website.",
+        "Business Transfers: In the event of a merger or acquisition, user data may be transferred.",
+        "Third-Party Links: Our platform contains links to external websites not governed by this policy.",
+        "Accessibility: We are committed to making our privacy policy accessible to all users.",
+        "Data Hosting: Our primary servers are located in secure facilities.",
+        "Policy Scope: This privacy notice applies to all services operated by our company.",
+        "Changes to Terms: Continued use of the service signifies acceptance of minor policy tweaks."
+    ]
+}

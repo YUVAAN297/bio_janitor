@@ -1,0 +1,11 @@
+{
+    "task_id": "medium_gdpr_subtle",
+    "difficulty": "medium",
+    "default_violations": 4,
+    "default_max_steps": 20,
+    "enabled_templates": [
+        "invalid_consent", "vague_retention", "restricted_erasure", "data_portability", 
+        "breach_notification_delay", "automated_decision_making", "processor_contracts", 
+        "cookie_wall", "legitimate_interest_vague", "cross_border_transfers"
+    ]
+}

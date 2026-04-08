@@ -1,0 +1,28 @@
+{
+    "task_id": "hard_gdpr_ccpa_multi",
+    "difficulty": "hard",
+    "default_violations": 6,
+    "default_max_steps": 25,
+    "enabled_templates": [
+        "gdpr_opt_out", 
+        "ccpa_sale_disclosure", 
+        "ccpa_non_discrimination", 
+        "gdpr_ccpa_conflict", 
+        "ccpa_financial_incentive", 
+        "ccpa_authorized_agent", 
+        "cpra_sharing_opt_out", 
+        "ccpa_lookback_period", 
+        "coppa_gdpr_age_mismatch", 
+        "gdpr_article_27_rep",
+        "ai_training_consent",
+        "biometric_retention",
+        "dark_pattern_deletion",
+        "hidden_data_brokers",
+        "automated_profiling_bias",
+        "employee_monitoring",
+        "dsar_charging_fees",
+        "sale_of_childrens_data",
+        "inferred_data_classification",
+        "unilateral_policy_changes"
+    ]
+}
