@@ -1,0 +1,16 @@
+version = 1
+revision = 1
+requires-python = ">=3.11"
+
+[[package]]
+name = "compliance_auditor_env"
+version = "1.0.0"
+source = { editable = "." }
+dependencies = [
+  { name = "fastapi" },
+  { name = "openai" },
+  { name = "openenv-core" },
+  { name = "pydantic" },
+  { name = "requests" },
+  { name = "uvicorn" },
+]

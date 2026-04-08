@@ -1,0 +1,7 @@
+openenv-core
+pydantic
+fastapi
+uvicorn
+openai
+requests
+beautifulsoup4>=4.12.0
