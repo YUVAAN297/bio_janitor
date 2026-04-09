@@ -26,3 +26,33 @@ def test_read_document_action():
 def test_invalid_tool():
     with pytest.raises(ValidationError):
         ComplianceAction(tool="fake_tool", parameters={})
+
+
+def test_reset_is_deterministic_for_same_task():
+    env = ComplianceAuditorEnv()
+    env.reset(task_name="medium_gdpr_subtle")
+    first_policy = env.policy_text
+    first_truth = dict(env.ground_truth)
+
+    env.reset(task_name="medium_gdpr_subtle")
+
+    assert env.policy_text == first_policy
+    assert env.ground_truth == first_truth
+
+
+def test_submit_report_score_is_strictly_between_zero_and_one():
+    env = ComplianceAuditorEnv()
+    env.reset(task_name="easy_gdpr_obvious")
+    env.step(ComplianceAction(tool="read_document", parameters={}))
+
+    for issue_id in env.ground_truth.keys():
+        env.step(
+            ComplianceAction(
+                tool="flag_violation",
+                parameters={"issue_id": issue_id, "explanation": "Valid"},
+            )
+        )
+
+    obs = env.step(ComplianceAction(tool="submit_report", parameters={}))
+
+    assert 0.0 < obs.reward < 1.0

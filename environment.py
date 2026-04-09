@@ -1,10 +1,30 @@
 import json
 import random
-import uuid
 import os
 from typing import List, Dict, Any
 from openenv.core.env_server import Environment, State
 from models import ComplianceAction, ComplianceObservation, ComplianceState
+
+STRICT_SCORE_MIN = 0.01
+STRICT_SCORE_MAX = 0.99
+DEFAULT_TASK_SEEDS = {
+    "easy_gdpr_obvious": "easy-fixed-seed-2026",
+    "medium_gdpr_subtle": "medium-fixed-seed-2026",
+    "hard_gdpr_ccpa_multi": "hard-fixed-seed-2026",
+}
+
+
+def strict_open_interval_score(value: float) -> float:
+    return max(STRICT_SCORE_MIN, min(STRICT_SCORE_MAX, float(value)))
+
+
+def resolve_episode_seed(task_name: str, provided_seed: Any = None) -> str:
+    base_seed = str(
+        provided_seed
+        or os.getenv("OPENENV_SEED")
+        or DEFAULT_TASK_SEEDS.get(task_name, f"default-{task_name}")
+    )
+    return f"{task_name}:{base_seed}"
 
 class ClauseGenerator:
     """The Procedural Engine armed with distinct legal scenarios."""
@@ -221,29 +241,29 @@ class ClauseGenerator:
 
     @staticmethod
     def generate(seed: str, difficulty: str, enabled_types: List[str], target_violations: int):
-        random.seed(seed)
+        rng = random.Random(seed)
         generated_clauses = {}
         
         # Procedural Modifiers (Massively Expanded)
         dynamic_vars = {
-            "days": random.randint(30, 365),
-            "months": random.randint(6, 24),
-            "breach_days": random.randint(10, 45),
-            "opt_out_days": random.randint(14, 60),
-            "discount": random.randint(5, 25),
-            "system": random.choice(["legacy mainframe", "cloud infrastructure", "analytics engine", "edge nodes"]),
-            "domain": random.choice(["globaltech", "analytics-hub", "data-stream", "techcorp", "aivision"]),
-            "company": random.choice(["TechCorp", "GlobalData", "Synapse", "OmniCorp", "NeuralNet"]),
-            "protocol": random.choice(["TLS 1.3", "HTTPS", "SSL", "unencrypted UDP"]),
-            "format": random.choice(["JSON", "XML", "CSV", "proprietary binary"]),
-            "action": random.choice(["registration", "signup", "checkout", "app installation"]),
-            "invasive_data": random.choice(["background processes", "real-time location", "local network contacts", "keystroke logs"]),
-            "ai_model": random.choice(["Large Language Model", "predictive neural network", "generative AI", "automated profiling engine"]),
-            "biometric_type": random.choice(["retinal scans", "facial recognition geometry", "voiceprint analysis", "gait tracking"]),
-            "third_party": random.choice(["marketing affiliates", "data brokers", "unnamed subsidiaries", "ad-tech partners"])
+            "days": rng.randint(30, 365),
+            "months": rng.randint(6, 24),
+            "breach_days": rng.randint(10, 45),
+            "opt_out_days": rng.randint(14, 60),
+            "discount": rng.randint(5, 25),
+            "system": rng.choice(["legacy mainframe", "cloud infrastructure", "analytics engine", "edge nodes"]),
+            "domain": rng.choice(["globaltech", "analytics-hub", "data-stream", "techcorp", "aivision"]),
+            "company": rng.choice(["TechCorp", "GlobalData", "Synapse", "OmniCorp", "NeuralNet"]),
+            "protocol": rng.choice(["TLS 1.3", "HTTPS", "SSL", "unencrypted UDP"]),
+            "format": rng.choice(["JSON", "XML", "CSV", "proprietary binary"]),
+            "action": rng.choice(["registration", "signup", "checkout", "app installation"]),
+            "invasive_data": rng.choice(["background processes", "real-time location", "local network contacts", "keystroke logs"]),
+            "ai_model": rng.choice(["Large Language Model", "predictive neural network", "generative AI", "automated profiling engine"]),
+            "biometric_type": rng.choice(["retinal scans", "facial recognition geometry", "voiceprint analysis", "gait tracking"]),
+            "third_party": rng.choice(["marketing affiliates", "data brokers", "unnamed subsidiaries", "ad-tech partners"])
         }
         
-        actual_violating_keys = set(random.sample(enabled_types, min(target_violations, len(enabled_types))))
+        actual_violating_keys = set(rng.sample(enabled_types, min(target_violations, len(enabled_types))))
         
         for c_type in enabled_types:
             template = ClauseGenerator.TEMPLATES.get(c_type)
@@ -295,6 +315,7 @@ class ComplianceAuditorEnv(Environment):
                 self.neutral_boilerplate = data.get("neutral_boilerplate", [])
 
     def _generate_dynamic_document(self, task_name: str, seed: str):
+        rng = random.Random(f"{seed}:document")
         task_file = os.path.join(self.root_dir, "tasks", f"{task_name}.json")
         if not os.path.exists(task_file):
             task_file = os.path.join(self.root_dir, "tasks", "easy_gdpr_obvious.json")
@@ -324,10 +345,17 @@ class ComplianceAuditorEnv(Environment):
                 self.ground_truth[key] = val["violation"]
 
         if self.neutral_boilerplate:
-            paragraphs.extend(random.sample(self.neutral_boilerplate, min(3, len(self.neutral_boilerplate))))
+            paragraphs.extend(
+                rng.sample(self.neutral_boilerplate, min(3, len(self.neutral_boilerplate)))
+            )
         
-        random.shuffle(paragraphs)
+        rng.shuffle(paragraphs)
         self.policy_text = "\n\n".join([f"PRIVACY POLICY — UID: {seed[:8]}", "Last Updated: October 2023", ""] + paragraphs)
+
+        self.policy_text = "\n\n".join(
+            [f"PRIVACY POLICY - UID: {seed[:8]}", "Last Updated: October 2023", ""]
+            + paragraphs
+        )
 
     def _update_live_metrics(self):
         true_positives = sum(1 for f in self.flagged_issues if not f.get("invalid"))
@@ -339,7 +367,7 @@ class ComplianceAuditorEnv(Environment):
 
     def reset(self, **kwargs) -> ComplianceObservation:
         task_name = kwargs.get("task_name", "easy_gdpr_obvious")
-        episode_seed = str(uuid.uuid4())
+        episode_seed = resolve_episode_seed(task_name, kwargs.get("seed"))
         
         self._state.episode_id = f"audit-{episode_seed[:8]}"
         self._state.step_count = 0
@@ -356,7 +384,7 @@ class ComplianceAuditorEnv(Environment):
         task_file = os.path.join(self.root_dir, "tasks", f"{task_name}.json")
         default_max_steps = 15
         if os.path.exists(task_file):
-            with open(task_file, "r") as f:
+            with open(task_file, "r", encoding="utf-8") as f:
                 default_max_steps = json.load(f).get("default_max_steps", 15)
                 
         max_steps = int(os.getenv("MAX_STEPS", str(default_max_steps)))
@@ -377,7 +405,7 @@ class ComplianceAuditorEnv(Environment):
         task_file = os.path.join(self.root_dir, "tasks", f"{self._state.task_id}.json")
         default_max_steps = 15
         if os.path.exists(task_file):
-            with open(task_file, "r") as f:
+            with open(task_file, "r", encoding="utf-8") as f:
                 default_max_steps = json.load(f).get("default_max_steps", 15)
         max_steps = int(os.getenv("MAX_STEPS", str(default_max_steps)))
         
@@ -432,8 +460,8 @@ class ComplianceAuditorEnv(Environment):
         elif action.tool == "submit_report":
             self._update_live_metrics()
             f1_score = 2 * (self._state.precision * self._state.recall) / (self._state.precision + self._state.recall) if (self._state.precision + self._state.recall) > 0 else 0.0
-            reward, done = float(f1_score * 1.0), True 
-            message = f"Audit submitted. F1: {f1_score:.2f}."
+            reward, done = strict_open_interval_score(f1_score), True
+            message = f"Audit submitted. F1: {reward:.2f}."
             
         else:
             error, reward = f"Unknown tool.", -0.1
@@ -460,7 +488,8 @@ class ComplianceAuditorEnv(Environment):
         return self._state
 
 def _calculate_trajectory_f1(task_name: str, trajectory: List[Dict[str, Any]]) -> float:
-    if not trajectory: return 0.0
+    if not trajectory:
+        return STRICT_SCORE_MIN
     
     last_step = trajectory[-1]
     info = last_step.get("info", {})
@@ -479,8 +508,10 @@ def _calculate_trajectory_f1(task_name: str, trajectory: List[Dict[str, Any]]) -
     recall = true_positives / total_actual if total_actual > 0 else 0.0
     
     if precision + recall > 0:
-        return 2 * (precision * recall) / (precision + recall)
-    return 0.0
+        return strict_open_interval_score(
+            2 * (precision * recall) / (precision + recall)
+        )
+    return STRICT_SCORE_MIN
 
 def grade_easy_gdpr_obvious(trajectory: List[Dict[str, Any]]) -> float:
     return _calculate_trajectory_f1("easy_gdpr_obvious", trajectory)

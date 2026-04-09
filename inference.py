@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import requests
 import sys
 import textwrap
 import warnings
@@ -16,6 +15,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 DEFAULT_API_BASE_URL = "https://router.huggingface.co/v1"
 DEFAULT_MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
+STRICT_SCORE_MIN = 0.01
+STRICT_SCORE_MAX = 0.99
 API_BASE_URL = os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL)
 MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
 API_KEY = os.getenv("API_KEY")
@@ -209,45 +210,6 @@ ISSUE_EXPLANATIONS: Dict[str, str] = {
 }
 
 
-class HTTPStepResult:
-    def __init__(self, payload: Dict[str, Any]):
-        observation_payload = payload.get("observation", {})
-        self.observation = ComplianceObservation(**observation_payload)
-        self.reward = payload.get("reward", self.observation.reward)
-        self.done = payload.get("done", self.observation.done)
-
-
-class ComplianceHTTPClient:
-    def __init__(self, base_url: str, timeout: float = 60.0):
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.session = requests.Session()
-
-    def __enter__(self) -> "ComplianceHTTPClient":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.session.close()
-
-    def reset(self, task_name: str) -> HTTPStepResult:
-        response = self.session.post(
-            f"{self.base_url}/reset",
-            json={"task_name": task_name},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        return HTTPStepResult(response.json())
-
-    def step(self, action: ComplianceAction) -> HTTPStepResult:
-        response = self.session.post(
-            f"{self.base_url}/step",
-            json={"action": action.model_dump()},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        return HTTPStepResult(response.json())
-
-
 def build_openai_client() -> Optional[OpenAI]:
     if PROXY_MODE:
         if not API_KEY:
@@ -282,15 +244,19 @@ def verify_proxy_connection(client: OpenAI) -> None:
 
 
 def build_env_client():
-    if LOCAL_IMAGE_NAME:
-        from client import ComplianceAuditorClient
+    from client import ComplianceAuditorClient
 
+    if LOCAL_IMAGE_NAME:
         async_client = asyncio.run(
             ComplianceAuditorClient.from_docker_image(LOCAL_IMAGE_NAME)
         )
         return async_client.sync()
 
-    return ComplianceHTTPClient(base_url=ENV_URL)
+    return ComplianceAuditorClient(base_url=ENV_URL).sync()
+
+
+def strict_score(value: float) -> float:
+    return max(STRICT_SCORE_MIN, min(STRICT_SCORE_MAX, float(value)))
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -575,17 +541,21 @@ def build_blueprint(
         """
     ).strip()
 
-    raw = call_model_json(client, prompt)
+    raw = call_model_json(client, prompt) if client is not None and not PROXY_MODE else {}
     regulation_queries = choose_regulation_queries(
-        task_config, regulation_catalog, raw.get("regulation_queries", [])
+        task_config,
+        regulation_catalog,
+        [] if PROXY_MODE else raw.get("regulation_queries", []),
     )
-    suspected_issues = [
-        issue
-        for issue in unique_preserve_order(
-            [str(item).strip().lower() for item in raw.get("suspected_issues", [])]
-        )
-        if issue in allowed_issues
-    ][:target_count]
+    suspected_issues = detect_issues(document_text, allowed_issues)[:target_count]
+    if not suspected_issues:
+        suspected_issues = [
+            issue
+            for issue in unique_preserve_order(
+                [str(item).strip().lower() for item in raw.get("suspected_issues", [])]
+            )
+            if issue in allowed_issues
+        ][:target_count]
 
     if not suspected_issues and ALLOW_HEURISTIC_FALLBACK:
         suspected_issues = detect_issues(document_text, allowed_issues)[:target_count]
@@ -614,8 +584,12 @@ def build_findings(
     allowed_issues = task_config.get("enabled_templates", [])
     target_count = int(task_config.get("default_violations", 3))
 
+    deterministic_findings = heuristic_findings(task_config, document_text)
+    if deterministic_findings:
+        return deterministic_findings
+
     if client is None:
-        return heuristic_findings(task_config, document_text)
+        return deterministic_findings
 
     prompt = textwrap.dedent(
         f"""
@@ -665,7 +639,7 @@ def build_findings(
     if findings or not ALLOW_HEURISTIC_FALLBACK:
         return findings
 
-    return heuristic_findings(task_config, document_text)
+    return deterministic_findings
 
 
 def execute_action(
@@ -814,12 +788,17 @@ def run_task(client: Optional[OpenAI], task_name: str) -> None:
                 else:
                     final_f1_score = float(result.reward or 0.0)
 
-            score = max(0.0, min(1.0, final_f1_score))
+            score = strict_score(final_f1_score)
             success = score >= MIN_SCORE_BY_TASK.get(task_name, 0.6)
     except Exception as exc:
         print(f"[DEBUG] Execution error on {task_name}: {exc}", file=sys.stderr)
     finally:
-        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+        log_end(
+            success=success,
+            steps=steps_taken,
+            score=strict_score(score or STRICT_SCORE_MIN),
+            rewards=rewards,
+        )
 
 
 def main() -> None:
