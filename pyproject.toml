@@ -2,7 +2,7 @@
 name = "compliance_auditor_env"
 version = "1.0.0"
 description = "An RL environment where AI agents act as legal auditors, scanning corporate privacy policies for GDPR and CCPA regulatory violations."
-readme = "readme.md"
+readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Yuvaan Soni" }]
 dependencies = [

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import requests
 import sys
 import textwrap
 import warnings
@@ -9,21 +10,27 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
-from client import ComplianceAuditorClient
-from models import ComplianceAction
+from models import ComplianceAction, ComplianceObservation
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+DEFAULT_API_BASE_URL = "https://router.huggingface.co/v1"
+DEFAULT_MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
+API_BASE_URL = os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL)
+MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
+API_KEY = os.getenv("API_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN")
-API_KEY = HF_TOKEN or os.getenv("API_KEY")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") or os.getenv("IMAGE_NAME")
-ALLOW_HEURISTIC_FALLBACK = os.getenv("ALLOW_HEURISTIC_FALLBACK", "").lower() in {
+PROXY_MODE = "API_BASE_URL" in os.environ or "API_KEY" in os.environ
+ALLOW_HEURISTIC_FALLBACK = (
+    not PROXY_MODE
+    and os.getenv("ALLOW_HEURISTIC_FALLBACK", "").lower()
+    in {
     "1",
     "true",
     "yes",
-}
+    }
+)
 
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 BENCHMARK = "compliance_auditor_env"
@@ -37,6 +44,11 @@ MIN_SCORE_BY_TASK = {
     "medium_gdpr_subtle": 0.70,
     "hard_gdpr_ccpa_multi": 0.70,
 }
+DEFAULT_TASKS = [
+    "easy_gdpr_obvious",
+    "medium_gdpr_subtle",
+    "hard_gdpr_ccpa_multi",
+]
 
 REGULATION_FALLBACKS = {
     "easy": [
@@ -195,6 +207,71 @@ ISSUE_EXPLANATIONS: Dict[str, str] = {
     "inferred_data_classification": "The policy treats inferred sensitive data as ordinary personal data.",
     "unilateral_policy_changes": "The policy lets the company repurpose existing data through unilateral updates.",
 }
+
+
+class HTTPStepResult:
+    def __init__(self, payload: Dict[str, Any]):
+        observation_payload = payload.get("observation", {})
+        self.observation = ComplianceObservation(**observation_payload)
+        self.reward = payload.get("reward", self.observation.reward)
+        self.done = payload.get("done", self.observation.done)
+
+
+class ComplianceHTTPClient:
+    def __init__(self, base_url: str, timeout: float = 60.0):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.session = requests.Session()
+
+    def __enter__(self) -> "ComplianceHTTPClient":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.session.close()
+
+    def reset(self, task_name: str) -> HTTPStepResult:
+        response = self.session.post(
+            f"{self.base_url}/reset",
+            json={"task_name": task_name},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return HTTPStepResult(response.json())
+
+    def step(self, action: ComplianceAction) -> HTTPStepResult:
+        response = self.session.post(
+            f"{self.base_url}/step",
+            json={"action": action.model_dump()},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return HTTPStepResult(response.json())
+
+
+def build_openai_client() -> Optional[OpenAI]:
+    if PROXY_MODE:
+        if not API_KEY:
+            raise RuntimeError(
+                "API_KEY is required when API_BASE_URL/API_KEY proxy variables are provided."
+            )
+        return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+    if HF_TOKEN:
+        return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+
+    return None
+
+
+def build_env_client():
+    if LOCAL_IMAGE_NAME:
+        from client import ComplianceAuditorClient
+
+        async_client = asyncio.run(
+            ComplianceAuditorClient.from_docker_image(LOCAL_IMAGE_NAME)
+        )
+        return async_client.sync()
+
+    return ComplianceHTTPClient(base_url=ENV_URL)
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -609,15 +686,7 @@ def run_task(client: Optional[OpenAI], task_name: str) -> None:
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        if LOCAL_IMAGE_NAME:
-            async_client = asyncio.run(
-                ComplianceAuditorClient.from_docker_image(LOCAL_IMAGE_NAME)
-            )
-            env_client_wrapper = async_client.sync()
-        else:
-            env_client_wrapper = ComplianceAuditorClient(base_url=ENV_URL).sync()
-
-        with env_client_wrapper as env_client:
+        with build_env_client() as env_client:
             task_config = load_task_config(task_name)
             base_knowledge = load_base_knowledge()
             regulation_catalog = base_knowledge.get("regulations", {})
@@ -735,9 +804,11 @@ def run_task(client: Optional[OpenAI], task_name: str) -> None:
 
 
 def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if API_KEY else None
-    task_name = os.getenv("OPENENV_TASK", "medium_gdpr_subtle")
-    run_task(client, task_name)
+    client = build_openai_client()
+    selected_task = os.getenv("OPENENV_TASK", "").strip()
+    tasks = [selected_task] if selected_task else DEFAULT_TASKS
+    for task_name in tasks:
+        run_task(client, task_name)
 
 
 if __name__ == "__main__":
