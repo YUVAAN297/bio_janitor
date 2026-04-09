@@ -262,6 +262,25 @@ def build_openai_client() -> Optional[OpenAI]:
     return None
 
 
+def verify_proxy_connection(client: OpenAI) -> None:
+    if not PROXY_MODE:
+        return
+
+    client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {
+                "role": "user",
+                "content": "Reply with exactly OK.",
+            }
+        ],
+        temperature=0.0,
+        top_p=1.0,
+        max_tokens=4,
+        seed=42,
+    )
+
+
 def build_env_client():
     if LOCAL_IMAGE_NAME:
         from client import ComplianceAuditorClient
@@ -805,6 +824,8 @@ def run_task(client: Optional[OpenAI], task_name: str) -> None:
 
 def main() -> None:
     client = build_openai_client()
+    if client is not None:
+        verify_proxy_connection(client)
     selected_task = os.getenv("OPENENV_TASK", "").strip()
     tasks = [selected_task] if selected_task else DEFAULT_TASKS
     for task_name in tasks:
