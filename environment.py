@@ -350,8 +350,6 @@ class ComplianceAuditorEnv(Environment):
             )
         
         rng.shuffle(paragraphs)
-        self.policy_text = "\n\n".join([f"PRIVACY POLICY — UID: {seed[:8]}", "Last Updated: October 2023", ""] + paragraphs)
-
         self.policy_text = "\n\n".join(
             [f"PRIVACY POLICY - UID: {seed[:8]}", "Last Updated: October 2023", ""]
             + paragraphs

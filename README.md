@@ -99,15 +99,16 @@ The baseline in `inference.py` is designed to satisfy the hackathon evaluator re
 - structured stdout strictly follows `[START]`, `[STEP]`, and `[END]`
 - the baseline can run a single task through `OPENENV_TASK` or all three tasks by default
 - evidence quotes are validated against the actual policy text before flagging
+- heuristic phrase matches are used only as a fallback when model output is missing or malformed
 
 ### Baseline Strategy
 
-The baseline uses a deterministic multi-stage approach:
+The baseline uses a deterministic, LLM-first multi-stage approach:
 
 1. Read the policy text.
 2. Make a proxy-backed OpenAI call when evaluator variables are injected.
 3. Build a regulation-check blueprint with fixed query budgets by difficulty.
-4. Detect violations using exact phrase matches against the generated policy text.
+4. Ask the model to choose high-confidence findings using the policy text and regulation notes.
 5. Normalize findings to remove unsupported or duplicate issues.
 6. Flag, fix, and submit with explicit step budgeting.
 
@@ -120,16 +121,10 @@ The baseline is intentionally constrained for reproducibility:
 - `seed=42`
 - fixed task-specific default environment seeds
 - deterministic regulation budgets by difficulty
-- deterministic phrase-based finding extraction
+- LLM-first planning and finding extraction with deterministic prompts
 - evidence normalization before action execution
 
-Example local baseline runs observed during development:
-
-- easy: `0.990`
-- medium: `0.990`
-- hard: `0.990`
-
-With the default seeds, task instances and baseline trajectories are repeatable across runs. Scores may still vary if a different environment seed is injected intentionally.
+With the default seeds, task instances are repeatable across runs. Baseline scores still depend on the injected model endpoint and can vary across easy, medium, and hard tasks, which is expected for an LLM-driven policy auditor.
 
 ## Repository Structure
 

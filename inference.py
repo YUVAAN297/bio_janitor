@@ -211,15 +211,17 @@ ISSUE_EXPLANATIONS: Dict[str, str] = {
 
 
 def build_openai_client() -> Optional[OpenAI]:
+    resolved_api_key = API_KEY if PROXY_MODE else (API_KEY or HF_TOKEN)
+
     if PROXY_MODE:
-        if not API_KEY:
+        if not resolved_api_key:
             raise RuntimeError(
                 "API_KEY is required when API_BASE_URL/API_KEY proxy variables are provided."
             )
-        return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        return OpenAI(base_url=API_BASE_URL, api_key=resolved_api_key)
 
-    if HF_TOKEN:
-        return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    if resolved_api_key:
+        return OpenAI(base_url=API_BASE_URL, api_key=resolved_api_key)
 
     return None
 
@@ -358,16 +360,20 @@ def call_model_json(client: Optional[OpenAI], prompt: str) -> Dict[str, Any]:
     if client is None:
         return {}
 
-    completion = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        top_p=1.0,
-        max_tokens=900,
-        seed=42,
-    )
-    response_text = completion.choices[0].message.content or ""
-    return extract_json_object(response_text)
+    try:
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            top_p=1.0,
+            max_tokens=900,
+            seed=42,
+        )
+        response_text = completion.choices[0].message.content or ""
+        return extract_json_object(response_text)
+    except Exception as exc:
+        print(f"[DEBUG] Model request failed: {exc}", file=sys.stderr)
+        return {}
 
 
 def unique_preserve_order(values: List[str]) -> List[str]:
@@ -541,23 +547,20 @@ def build_blueprint(
         """
     ).strip()
 
-    raw = call_model_json(client, prompt) if client is not None and not PROXY_MODE else {}
+    raw = call_model_json(client, prompt)
     regulation_queries = choose_regulation_queries(
         task_config,
         regulation_catalog,
-        [] if PROXY_MODE else raw.get("regulation_queries", []),
+        raw.get("regulation_queries", []),
     )
-    suspected_issues = detect_issues(document_text, allowed_issues)[:target_count]
+    suspected_issues = [
+        issue
+        for issue in unique_preserve_order(
+            [str(item).strip().lower() for item in raw.get("suspected_issues", [])]
+        )
+        if issue in allowed_issues
+    ][:target_count]
     if not suspected_issues:
-        suspected_issues = [
-            issue
-            for issue in unique_preserve_order(
-                [str(item).strip().lower() for item in raw.get("suspected_issues", [])]
-            )
-            if issue in allowed_issues
-        ][:target_count]
-
-    if not suspected_issues and ALLOW_HEURISTIC_FALLBACK:
         suspected_issues = detect_issues(document_text, allowed_issues)[:target_count]
 
     submit_after_step = int(
@@ -583,10 +586,7 @@ def build_findings(
 ) -> List[Dict[str, str]]:
     allowed_issues = task_config.get("enabled_templates", [])
     target_count = int(task_config.get("default_violations", 3))
-
     deterministic_findings = heuristic_findings(task_config, document_text)
-    if deterministic_findings:
-        return deterministic_findings
 
     if client is None:
         return deterministic_findings
@@ -636,7 +636,7 @@ def build_findings(
         raw.get("findings", []), document_text, allowed_issues, target_count
     )
 
-    if findings or not ALLOW_HEURISTIC_FALLBACK:
+    if findings:
         return findings
 
     return deterministic_findings
