@@ -1,4 +1,4 @@
----
+ï»¿---
 title: Compliance Auditor Env
 emoji: "??"
 colorFrom: blue
@@ -143,15 +143,15 @@ bio_janitor_env/
 +-- pyproject.toml
 +-- requirements.txt
 +-- server/
-¦   +-- __init__.py
-¦   +-- app.py
-¦   +-- Dockerfile
-¦   +-- environment.py
+Â¦   +-- __init__.py
+Â¦   +-- app.py
+Â¦   +-- Dockerfile
+Â¦   +-- environment.py
 +-- tasks/
-¦   +-- base_knowledge.json
-¦   +-- easy_gdpr_obvious.json
-¦   +-- medium_gdpr_subtle.json
-¦   +-- hard_gdpr_ccpa_multi.json
+Â¦   +-- base_knowledge.json
+Â¦   +-- easy_gdpr_obvious.json
+Â¦   +-- medium_gdpr_subtle.json
+Â¦   +-- hard_gdpr_ccpa_multi.json
 +-- test_environment.py
 ```
 
@@ -209,3 +209,4 @@ This repository satisfies the key Round 1 requirements:
 ## Notes
 
 The policy generator includes both compliant and violating clause variants across many privacy topics, including GDPR, CCPA, CPRA, AI-training consent, biometric retention, dark-pattern deletion flows, and cross-jurisdiction consent conflicts. This makes the environment suitable for both human inspection and agent benchmarking.
+
