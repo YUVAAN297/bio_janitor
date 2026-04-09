@@ -1,13 +1,13 @@
-﻿---
+---
 title: Compliance Auditor Env
-emoji: "📄"
+emoji: "??"
 colorFrom: blue
 colorTo: green
 sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: An OpenEnv legal compliance auditor for GDPR and CCPA policy review.
+short_description: GDPR and CCPA compliance auditor on OpenEnv.
 ---
 
 # Compliance Auditor Env
@@ -132,27 +132,27 @@ Actual evaluator scores may vary depending on the injected model endpoint, polic
 
 ```text
 bio_janitor_env/
-├── Dockerfile
-├── README.md
-├── __init__.py
-├── client.py
-├── environment.py
-├── inference.py
-├── models.py
-├── openenv.yaml
-├── pyproject.toml
-├── requirements.txt
-├── server/
-│   ├── __init__.py
-│   ├── app.py
-│   ├── Dockerfile
-│   └── environment.py
-├── tasks/
-│   ├── base_knowledge.json
-│   ├── easy_gdpr_obvious.json
-│   ├── medium_gdpr_subtle.json
-│   └── hard_gdpr_ccpa_multi.json
-└── test_environment.py
++-- Dockerfile
++-- README.md
++-- __init__.py
++-- client.py
++-- environment.py
++-- inference.py
++-- models.py
++-- openenv.yaml
++-- pyproject.toml
++-- requirements.txt
++-- server/
+�   +-- __init__.py
+�   +-- app.py
+�   +-- Dockerfile
+�   +-- environment.py
++-- tasks/
+�   +-- base_knowledge.json
+�   +-- easy_gdpr_obvious.json
+�   +-- medium_gdpr_subtle.json
+�   +-- hard_gdpr_ccpa_multi.json
++-- test_environment.py
 ```
 
 ## Local Validation
