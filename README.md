@@ -43,6 +43,8 @@ The agent can call these tools:
 - `suggest_fix`
 - `submit_report`
 
+`available_tools` is state-aware: for example, `suggest_fix` only appears after a valid flag, and `submit_report` appears only after the document has been opened.
+
 ### Observation Space
 
 Each step returns a typed `ComplianceObservation` containing:
@@ -74,7 +76,7 @@ The submission includes three graded tasks:
 - `medium_gdpr_subtle`: subtler GDPR issues such as invalid consent, vague retention, breach notification delay, cookie walls, and missing safeguards.
 - `hard_gdpr_ccpa_multi`: mixed GDPR and CCPA conflicts, including opt-out misuse, sharing-sale disclosure issues, discrimination, authorized-agent handling, dark patterns, and other modern privacy failures.
 
-The final environment reward on `submit_report` is derived from trajectory F1 over flagged violations and is clamped into the strict open interval `(0, 1)` to satisfy the evaluator contract.
+The final environment reward on `submit_report` is derived from trajectory F1 over flagged violations, lightly adjusted to reward actually reading the document and checking regulations, and then clamped into the strict open interval `(0, 1)` to satisfy the evaluator contract.
 
 ## Reward Shaping
 
@@ -84,9 +86,11 @@ The environment provides dense intermediate feedback:
 - larger reward for correct flags, with an early-action bonus
 - positive reward for a fix suggestion after a correct flag
 - penalties for false positives, duplicate flags, and invalid fix attempts
-- final episode reward equal to the report F1 score mapped into `(0, 1)`
+- final episode reward equal to the report F1 score with a mild workflow-quality multiplier, mapped into `(0, 1)`
 
 This makes the benchmark suitable both for baseline evaluation and for RL-style agent improvement.
+
+The supporting tools are intentionally lightweight but input-sensitive: regulation lookups return matched legal text, expert hints depend on the issue under review, and clause comparison reports lexical overlap instead of a fixed canned score.
 
 ## Baseline Agent
 
@@ -129,7 +133,7 @@ With the default seeds, task instances are repeatable across runs. Baseline scor
 ## Repository Structure
 
 ```text
-bio_janitor_env/
+compliance_auditor_env/
 +-- Dockerfile
 +-- README.md
 +-- __init__.py

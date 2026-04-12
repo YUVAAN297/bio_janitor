@@ -22,16 +22,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
 API_KEY = os.getenv("API_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") or os.getenv("IMAGE_NAME")
-PROXY_MODE = "API_BASE_URL" in os.environ or "API_KEY" in os.environ
-ALLOW_HEURISTIC_FALLBACK = (
-    not PROXY_MODE
-    and os.getenv("ALLOW_HEURISTIC_FALLBACK", "").lower()
-    in {
-    "1",
-    "true",
-    "yes",
-    }
-)
+PROXY_MODE = bool(API_KEY)
 
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 BENCHMARK = "compliance_auditor_env"
@@ -227,7 +218,7 @@ def build_openai_client() -> Optional[OpenAI]:
 
 
 def verify_proxy_connection(client: OpenAI) -> None:
-    if not PROXY_MODE:
+    if not API_KEY:
         return
 
     client.chat.completions.create(

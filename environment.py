@@ -1,8 +1,9 @@
 import json
 import random
 import os
-from typing import List, Dict, Any
-from openenv.core.env_server import Environment, State
+import re
+from typing import List, Dict, Any, Optional
+from openenv.core.env_server import Environment
 from models import ComplianceAction, ComplianceObservation, ComplianceState
 
 STRICT_SCORE_MIN = 0.01
@@ -25,6 +26,48 @@ def resolve_episode_seed(task_name: str, provided_seed: Any = None) -> str:
         or DEFAULT_TASK_SEEDS.get(task_name, f"default-{task_name}")
     )
     return f"{task_name}:{base_seed}"
+
+
+def _extract_state_dict(step: Dict[str, Any]) -> Dict[str, Any]:
+    info = step.get("info", {})
+    if isinstance(info, dict):
+        state_dict = info.get("state")
+        if isinstance(state_dict, dict):
+            return state_dict
+
+    state_dict = step.get("state")
+    if isinstance(state_dict, dict):
+        return state_dict
+
+    observation = step.get("observation")
+    if isinstance(observation, dict):
+        state_dict = observation.get("state")
+        if isinstance(state_dict, dict):
+            return state_dict
+
+    return {}
+
+
+def _extract_ground_truth_keys(trajectory: List[Dict[str, Any]]) -> List[str]:
+    for step in reversed(trajectory):
+        state_dict = _extract_state_dict(step)
+        ground_truth = state_dict.get("ground_truth_keys")
+        if isinstance(ground_truth, list) and ground_truth:
+            return [
+                str(issue_id).strip().lower()
+                for issue_id in ground_truth
+                if str(issue_id).strip()
+            ]
+    return []
+
+
+def _workflow_quality_multiplier(document_read: bool, regulation_checks: int) -> float:
+    multiplier = 1.0
+    if not document_read:
+        multiplier *= 0.8
+    if regulation_checks == 0:
+        multiplier *= 0.9
+    return multiplier
 
 class ClauseGenerator:
     """The Procedural Engine armed with distinct legal scenarios."""
@@ -104,7 +147,7 @@ class ClauseGenerator:
             "violation_msg": "GDPR Article 20 - Refusal to provide data portability."
         },
         "breach_notification_delay": {
-            "compliant": "Data Breach: We will notify the supervisory authority within 72 hours of discovering a breach.",
+            "compliant": "Data Breach: We will notify the supervisory authority within {breach_hours} hours of discovering a breach.",
             "violating": "Data Breach: We will notify the supervisory authority within {breach_days} days of discovering a breach.",
             "violation_msg": "GDPR Article 33 - Breach notification timeframe exceeds 72 hours."
         },
@@ -249,12 +292,13 @@ class ClauseGenerator:
             "days": rng.randint(30, 365),
             "months": rng.randint(6, 24),
             "breach_days": rng.randint(10, 45),
+            "breach_hours": rng.choice([24, 48, 72]),
             "opt_out_days": rng.randint(14, 60),
             "discount": rng.randint(5, 25),
             "system": rng.choice(["legacy mainframe", "cloud infrastructure", "analytics engine", "edge nodes"]),
             "domain": rng.choice(["globaltech", "analytics-hub", "data-stream", "techcorp", "aivision"]),
             "company": rng.choice(["TechCorp", "GlobalData", "Synapse", "OmniCorp", "NeuralNet"]),
-            "protocol": rng.choice(["TLS 1.3", "HTTPS", "SSL", "unencrypted UDP"]),
+            "protocol": rng.choice(["TLS 1.3", "HTTPS", "mTLS", "TLS 1.2"]),
             "format": rng.choice(["JSON", "XML", "CSV", "proprietary binary"]),
             "action": rng.choice(["registration", "signup", "checkout", "app installation"]),
             "invasive_data": rng.choice(["background processes", "real-time location", "local network contacts", "keystroke logs"]),
@@ -304,6 +348,10 @@ class ComplianceAuditorEnv(Environment):
             "suggest_fix",
             "submit_report",
         ]
+        self.document_read = False
+        self.regulation_checks = 0
+        self._task_config: Dict[str, Any] = {}
+        self._max_steps = 15
         
         self.regulations = {}
         self.neutral_boilerplate = []
@@ -314,15 +362,64 @@ class ComplianceAuditorEnv(Environment):
                 self.regulations = data.get("regulations", {})
                 self.neutral_boilerplate = data.get("neutral_boilerplate", [])
 
-    def _generate_dynamic_document(self, task_name: str, seed: str):
-        rng = random.Random(f"{seed}:document")
+    def _load_task_config(self, task_name: str) -> Dict[str, Any]:
         task_file = os.path.join(self.root_dir, "tasks", f"{task_name}.json")
         if not os.path.exists(task_file):
             task_file = os.path.join(self.root_dir, "tasks", "easy_gdpr_obvious.json")
-            
         with open(task_file, "r", encoding="utf-8") as f:
-            task_config = json.load(f)
-            
+            return json.load(f)
+
+    def _current_available_tools(self) -> List[str]:
+        tools = [
+            "read_document",
+            "check_regulation",
+            "search_web",
+            "ask_expert",
+            "compare_clauses",
+        ]
+        if self.document_read:
+            tools.extend(["flag_violation", "submit_report"])
+        if any(
+            flag["issue_id"] not in self.suggested_fixes
+            for flag in self.flagged_issues
+            if not flag.get("invalid")
+        ):
+            tools.append("suggest_fix")
+        return tools
+
+    def _lookup_regulation_text(self, query: str) -> List[str]:
+        query_lower = query.lower()
+        query_tokens = [token for token in re.findall(r"[a-z0-9.]+", query_lower) if len(token) > 2]
+        exact_matches = []
+        fuzzy_matches = []
+        for key, value in self.regulations.items():
+            haystack = f"{key} {value}".lower()
+            formatted = f"{key}: {value}"
+            if query_lower and query_lower in key.lower():
+                exact_matches.append(formatted)
+            elif query_tokens and all(token in haystack for token in query_tokens):
+                fuzzy_matches.append(formatted)
+        return (exact_matches or fuzzy_matches)[:3]
+
+    def _issue_reference(self, issue_id: str) -> Optional[str]:
+        template = ClauseGenerator.TEMPLATES.get(issue_id, {})
+        violation_msg = template.get("violation_msg", "")
+        for key, value in self.regulations.items():
+            if key.lower() in violation_msg.lower():
+                return f"{key}: {value}"
+        return violation_msg or None
+
+    def _compare_clause_text(self, left: str, right: str) -> str:
+        left_tokens = set(re.findall(r"[a-z0-9]+", left.lower()))
+        right_tokens = set(re.findall(r"[a-z0-9]+", right.lower()))
+        union = left_tokens | right_tokens
+        overlap = left_tokens & right_tokens
+        score = (len(overlap) / len(union)) if union else 0.0
+        shared_terms = ", ".join(sorted(list(overlap))[:5]) if overlap else "none"
+        return f"Clause comparison score: {score:.2f}. Shared terms: {shared_terms}."
+
+    def _generate_dynamic_document(self, task_config: Dict[str, Any], seed: str):
+        rng = random.Random(f"{seed}:document")
         enabled_templates = task_config.get("enabled_templates", ["retention_period"])
         
         default_violating = task_config.get("default_violations", 3)
@@ -356,8 +453,16 @@ class ComplianceAuditorEnv(Environment):
         )
 
     def _update_live_metrics(self):
-        true_positives = sum(1 for f in self.flagged_issues if not f.get("invalid"))
-        false_positives = sum(1 for f in self.flagged_issues if f.get("invalid"))
+        true_positives = sum(
+            1
+            for flag in self.flagged_issues
+            if flag.get("issue_id") in self.ground_truth and not flag.get("invalid")
+        )
+        false_positives = sum(
+            1
+            for flag in self.flagged_issues
+            if flag.get("issue_id") not in self.ground_truth or flag.get("invalid")
+        )
         total_actual = len(self.ground_truth)
         
         self._state.precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
@@ -373,62 +478,87 @@ class ComplianceAuditorEnv(Environment):
         self._state.precision = 0.0
         self._state.recall = 0.0
         
-        self._generate_dynamic_document(task_name, episode_seed)
+        self._task_config = self._load_task_config(task_name)
+        self._max_steps = int(
+            os.getenv("MAX_STEPS", str(self._task_config.get("default_max_steps", 15)))
+        )
+        self.document_read = False
+        self.regulation_checks = 0
+        self._generate_dynamic_document(self._task_config, episode_seed)
         self._state.ground_truth_keys = list(self.ground_truth.keys())
         
         self.flagged_issues = []
         self.suggested_fixes = set()
-        
-        task_file = os.path.join(self.root_dir, "tasks", f"{task_name}.json")
-        default_max_steps = 15
-        if os.path.exists(task_file):
-            with open(task_file, "r", encoding="utf-8") as f:
-                default_max_steps = json.load(f).get("default_max_steps", 15)
-                
-        max_steps = int(os.getenv("MAX_STEPS", str(default_max_steps)))
+        self.available_tools = self._current_available_tools()
         
         return ComplianceObservation(
             done=False, reward=0.0, 
-            message=f"Initialized audit for {task_name}. Max steps: {max_steps}.",
+            message=f"Initialized audit for {task_name}. Max steps: {self._max_steps}.",
             flagged_issues=self.flagged_issues,
             available_tools=self.available_tools,
-            max_steps=max_steps,
+            max_steps=self._max_steps,
             error=None
         )
 
     def step(self, action: ComplianceAction) -> ComplianceObservation:
         self._state.step_count += 1
         reward, message, error, done = 0.0, "", None, False
-        
-        task_file = os.path.join(self.root_dir, "tasks", f"{self._state.task_id}.json")
-        default_max_steps = 15
-        if os.path.exists(task_file):
-            with open(task_file, "r", encoding="utf-8") as f:
-                default_max_steps = json.load(f).get("default_max_steps", 15)
-        max_steps = int(os.getenv("MAX_STEPS", str(default_max_steps)))
+        max_steps = self._max_steps
         
         if action.tool == "read_document":
+            self.document_read = True
             message = f"DOCUMENT TEXT:\n{self.policy_text}"
             if self._state.step_count <= 2: reward += 0.05 
                 
         elif action.tool == "check_regulation":
-            reg_query = action.parameters.get("query", "")
-            matches = [v for k, v in self.regulations.items() if k.lower() in reg_query.lower()]
-            message = f"REGULATION TEXT:\n" + "\n".join(matches) if matches else "Regulation not found."
+            reg_query = str(action.parameters.get("query", "")).strip()
+            matches = self._lookup_regulation_text(reg_query)
+            self.regulation_checks += 1
+            message = (
+                f"REGULATION TEXT:\n" + "\n".join(matches)
+                if matches
+                else f"No direct regulation match found for '{reg_query}'."
+            )
             reward += 0.02 
             
         elif action.tool == "search_web":
-            query = action.parameters.get("query", "")
-            message = f"Simulated Web Search for '{query}': Regulatory guidance implies explicit consent is mandatory."
+            query = str(action.parameters.get("query", "")).strip()
+            matches = self._lookup_regulation_text(query)
+            if matches:
+                message = f"Web search summary for '{query}': " + " | ".join(matches)
+            else:
+                message = (
+                    f"Web search summary for '{query}': guidance emphasizes transparency, "
+                    "purpose limitation, and honoring user rights."
+                )
             reward += 0.01 
             
         elif action.tool == "ask_expert":
-            issue_id = action.parameters.get("issue_id", "")
-            message = f"Expert Hint: Double check the opt-in/opt-out mechanisms related to {issue_id}."
+            issue_id = str(action.parameters.get("issue_id", "")).strip().lower()
+            reference = self._issue_reference(issue_id)
+            if reference:
+                message = f"Expert Hint for {issue_id}: {reference}"
+            else:
+                message = f"Expert Hint for {issue_id}: focus on the legal basis, disclosure duties, and user rights tied to this clause."
             reward += 0.01 
             
         elif action.tool == "compare_clauses":
-            message = "Similarity Score: 0.88. Clauses are highly similar but jurisdictionally different."
+            left = str(
+                action.parameters.get("left_clause")
+                or action.parameters.get("clause_a")
+                or ""
+            ).strip()
+            right = str(
+                action.parameters.get("right_clause")
+                or action.parameters.get("clause_b")
+                or ""
+            ).strip()
+            if not left or not right:
+                paragraphs = [part for part in self.policy_text.split("\n\n") if part.strip()]
+                if len(paragraphs) >= 2:
+                    left = paragraphs[-2]
+                    right = paragraphs[-1]
+            message = self._compare_clause_text(left, right)
             reward += 0.01 
 
         elif action.tool == "flag_violation":
@@ -458,13 +588,20 @@ class ComplianceAuditorEnv(Environment):
         elif action.tool == "submit_report":
             self._update_live_metrics()
             f1_score = 2 * (self._state.precision * self._state.recall) / (self._state.precision + self._state.recall) if (self._state.precision + self._state.recall) > 0 else 0.0
-            reward, done = strict_open_interval_score(f1_score), True
+            reward, done = strict_open_interval_score(
+                f1_score
+                * _workflow_quality_multiplier(
+                    self.document_read,
+                    self.regulation_checks,
+                )
+            ), True
             message = f"Audit submitted. F1: {reward:.2f}."
             
         else:
             error, reward = f"Unknown tool.", -0.1
 
         self._update_live_metrics()
+        self.available_tools = self._current_available_tools()
 
         timed_out = self._state.step_count >= max_steps
         if timed_out and not done:
@@ -482,17 +619,23 @@ class ComplianceAuditorEnv(Environment):
         )
 
     @property
-    def state(self) -> State:
+    def state(self) -> ComplianceState:
         return self._state
 
 def _calculate_trajectory_f1(task_name: str, trajectory: List[Dict[str, Any]]) -> float:
     if not trajectory:
         return STRICT_SCORE_MIN
-    
-    last_step = trajectory[-1]
-    info = last_step.get("info", {})
-    state_dict = info.get("state", {}) if "state" in info else last_step.get("state", {})
-    actual_violations = state_dict.get("ground_truth_keys", [])
+
+    actual_violations = _extract_ground_truth_keys(trajectory)
+    document_read = any(
+        step.get("action", {}).get("tool") == "read_document"
+        for step in trajectory
+    )
+    regulation_checks = sum(
+        1
+        for step in trajectory
+        if step.get("action", {}).get("tool") == "check_regulation"
+    )
     
     flagged = {step.get("action", {}).get("parameters", {}).get("issue_id", "").strip().lower() 
                 for step in trajectory if step.get("action", {}).get("tool") == "flag_violation"}
@@ -508,6 +651,7 @@ def _calculate_trajectory_f1(task_name: str, trajectory: List[Dict[str, Any]]) -
     if precision + recall > 0:
         return strict_open_interval_score(
             2 * (precision * recall) / (precision + recall)
+            * _workflow_quality_multiplier(document_read, regulation_checks)
         )
     return STRICT_SCORE_MIN
 
